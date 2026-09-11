@@ -177,6 +177,31 @@ try {
   t(px(hctx, 1370, 852)[3] === 0, 'feathered hole core transparent');
   const rimA = px(hctx, 1171, 852)[3];
   t(rimA > 0 && rimA < 255, 'hole feather falloff is gradual', `alpha=${rimA}`);
+
+  // 14. shadow spread: no white plate, dilates colored shadow only
+  const spBox = { x: 300, y: 300, w: 100, h: 100 };
+  c = await renderCut({ imageUrl: SRC, box: { rect: spBox },
+    design: V(spBox, { shadow: { enabled: true, x: 0, y: 0, blur: 0, spread: 10, color: '#ff0000', opacity: 1 } }), scale: 1 });
+  const sctx = c.getContext('2d');
+  // canvas: content 100 + margin; margin = 0*2+10+0+0+20 = 30 each side → 160x160.
+  // content origin = (30,30). Spread ring sits 10px outside content: sample (30-5, 80).
+  const ring = px(sctx, 25, 80);
+  t(ring[0] > 200 && ring[1] < 80 && ring[2] < 80 && ring[3] === 255, 'spread ring is shadow color, opaque', ring.join(','));
+  // far margin corner must stay transparent (no white padding plate)
+  t(px(sctx, 2, 2)[3] === 0, 'spread margin corner transparent');
+
+  // 15. shadow opacity: alpha channel follows the slider, not the hex
+  c = await renderCut({ imageUrl: SRC, box: { rect: spBox },
+    design: V(spBox, { shadow: { enabled: true, x: 0, y: 0, blur: 0, spread: 10, color: '#ff0000', opacity: 0.5 } }), scale: 1 });
+  const octx = c.getContext('2d');
+  const oring = px(octx, 25, 80);
+  t(oring[0] > 150 && oring[3] > 80 && oring[3] < 180, 'shadow opacity lands in alpha', oring.join(','));
+
+  // 16. color helpers: rgba legacy parses, hex round-trips
+  const { parseCssColor, shadowRgba } = await import('/src/render.js');
+  const leg = parseCssColor('rgba(0,0,0,0.30)');
+  t(Math.abs(leg.a - 0.3) < 0.01, 'legacy rgba alpha parses', String(leg.a));
+  t(shadowRgba({ color: '#ff0000', opacity: 0.5 }) === 'rgba(255,0,0,0.5)', 'shadowRgba composes hex+opacity');
 } catch (e) {
   out.push('ERROR ' + (e && e.stack || e));
 }

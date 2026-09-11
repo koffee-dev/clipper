@@ -8,6 +8,42 @@ export function cssFilterString(adjust) {
   return `saturate(${adjust.sat}) brightness(${adjust.bright}) contrast(${adjust.contrast})`;
 }
 
+export function parseCssColor(c) {
+  if (!c || typeof c !== 'string') return { r: 0, g: 0, b: 0, a: 0.3 };
+  const s = c.trim();
+  if (s[0] === '#') {
+    let h = s.slice(1);
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const n = (i) => parseInt(h.slice(i, i + 2), 16) || 0;
+    if (h.length >= 8) return { r: n(0), g: n(2), b: n(4), a: n(6) / 255 };
+    return { r: n(0), g: n(2), b: n(4), a: 1 };
+  }
+  const m = s.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+  return { r: 0, g: 0, b: 0, a: 0.3 };
+}
+
+export function colorToHex(c) {
+  const { r, g, b } = parseCssColor(c);
+  const h = (n) => Math.max(0, Math.min(255, n | 0)).toString(16).padStart(2, '0');
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+
+export function shadowRgba(shadow) {
+  const p = parseCssColor(shadow?.color);
+  const a = shadow?.opacity != null ? +shadow.opacity : p.a;
+  return `rgba(${p.r},${p.g},${p.b},${Math.max(0, Math.min(1, Number.isFinite(a) ? a : 1))})`;
+}
+
+export function cssBoxShadow(shadow, ds = 1) {
+  if (!shadow?.enabled) return 'none';
+  const x = (shadow.x || 0) * ds;
+  const y = (shadow.y || 0) * ds;
+  const blur = (shadow.blur || 0) * ds;
+  const spread = (shadow.spread || 0) * ds;
+  return `${x}px ${y}px ${blur}px ${spread}px ${shadowRgba(shadow)}`;
+}
+
 function loadImage(url) {
   return new Promise((res, rej) => {
     const im = new Image();
@@ -296,23 +332,31 @@ export async function renderCut({ img, imageUrl, box, design, scale = 1, hiQ = t
   const ox = -outW / 2, oy = -outH / 2; // top-left of padded box
   const ix = ox + p.l + bw, iy = oy + p.t + bw; // top-left of image content
 
-  // 6: shadow (drawn under, follows radius shape; spread inflates it)
+  // 6: shadow — CSS box-shadow: dilate by spread, fill with color+alpha, blur.
+  // Never fill the caster with #fff: spread would peek out as a white plate.
+  // All geometry is in unscaled user units (ctx already carries export scale).
   if (shadow?.enabled) {
     const ssp = shadow.spread || 0;
+    const blurPx = shadow.blur || 0;
+    const dx = shadow.x || 0;
+    const dy = shadow.y || 0;
     ctx.save();
-    ctx.shadowColor = shadow.color || 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = shadow.blur || 24;
-    ctx.shadowOffsetX = shadow.x || 0;
-    ctx.shadowOffsetY = shadow.y || 12;
-    ctx.fillStyle = '#fff';
+    if (blurPx > 0) ctx.filter = `blur(${blurPx}px)`;
+    ctx.fillStyle = shadowRgba(shadow);
+    const sx = ox + p.l - ssp + dx;
+    const sy0 = oy + p.t - ssp + dy;
     if (isMask && holeGeom) {
-      // ring + hole contour: shadow follows both, hole itself stays unfilled
       ctx.beginPath();
-      traceRoundRect(ctx, ox + p.l - ssp, oy + p.t - ssp, cw + ssp * 2, ch + ssp * 2, radius + bw + ssp);
-      traceRoundRect(ctx, ix + (holeGeom.hx - padExtra), iy + (holeGeom.hy - padExtra), holeGeom.holeW, holeGeom.holeH, holeGeom.holeRadius);
+      traceRoundRect(ctx, sx, sy0, cw + ssp * 2, ch + ssp * 2, radius + bw + ssp);
+      const hx = ix + (holeGeom.hx - padExtra) + dx;
+      const hy = iy + (holeGeom.hy - padExtra) + dy;
+      const hw = holeGeom.holeW, hh = holeGeom.holeH;
+      const inset = Math.max(0, Math.min(ssp, hw / 2 - 0.5, hh / 2 - 0.5));
+      traceRoundRect(ctx, hx + inset, hy + inset, hw - inset * 2, hh - inset * 2,
+        Math.max(0, holeGeom.holeRadius - inset));
       ctx.fill('evenodd');
     } else {
-      roundRectPath(ctx, ox + p.l - ssp, oy + p.t - ssp, cw + ssp * 2, ch + ssp * 2, radius + bw + ssp);
+      roundRectPath(ctx, sx, sy0, cw + ssp * 2, ch + ssp * 2, radius + bw + ssp);
       ctx.fill();
     }
     ctx.restore();

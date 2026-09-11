@@ -17,7 +17,7 @@ export const defaultVariant = (boxId, rect, name = 'v1') => ({
   pad: { t: 0, r: 0, b: 0, l: 0, auto: false },
   radius: 0,
   border: { w: 0, color: '#111827' },
-  shadow: { enabled: false, x: 0, y: 12, blur: 24, spread: 0, color: 'rgba(0,0,0,0.30)' },
+  shadow: { enabled: false, x: 0, y: 12, blur: 24, spread: 0, color: '#000000', opacity: 0.3 },
   adjust: { sat: 1, bright: 1, contrast: 1 },
   transform: { dx: 0, dy: 0, scale: 1, rot: 0, flipH: false },
   feather: 0,
@@ -34,7 +34,7 @@ export const defaultSlicer = () => ({ enabled: false, rows: 3, cols: 3, rowGap: 
 export const defaultImageStyle = () => ({
   radius: 0,
   border: { w: 0, color: '#111827' },
-  shadow: { enabled: false, x: 0, y: 12, blur: 24, spread: 0, color: 'rgba(0,0,0,0.30)' },
+  shadow: { enabled: false, x: 0, y: 12, blur: 24, spread: 0, color: '#000000', opacity: 0.3 },
   adjust: { sat: 1, bright: 1, contrast: 1 },
   feather: 0,
   pad: { t: 0, r: 0, b: 0, l: 0, auto: false },

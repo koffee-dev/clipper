@@ -9,7 +9,7 @@ import {
   MoveHorizontal, MoveVertical, Magnet,
 } from 'lucide-react';
 import { useStore, defaultVariant, defaultSlicer, defaultImageStyle, selectBox, ancestorPath } from './store';
-import { renderCut, renderSlicerCell, slicerCells, resolveMaskBase, guideCandidates, snapMoveRect, snapPoint, cssFilterString, scatterLayout } from './render';
+import { renderCut, renderSlicerCell, slicerCells, resolveMaskBase, guideCandidates, snapMoveRect, snapPoint, cssFilterString, scatterLayout, parseCssColor, colorToHex, cssBoxShadow } from './render';
 import { UPSCALE_MODELS, ensureUpscaler, upscaleCanvas, onnxSpec } from './upscale';
 import { getPreview, setPreview, previewFingerprint } from './previewCache';
 
@@ -187,6 +187,34 @@ function Slider({ value, onChange, min = 0, max = 2, step = 0.01 }) {
     onPointerUp={() => tweak?.endSoon()}
     onChange={(e) => { tweak?.begin(); onChange(parseFloat(e.target.value)); }}
     className="w-full" />;
+}
+
+function ShadowControls({ shadow, onChange }) {
+  const hex = colorToHex(shadow.color);
+  const op = shadow.opacity != null ? shadow.opacity : parseCssColor(shadow.color).a;
+  return (
+    <>
+      <Slider value={shadow.blur} min={0} max={80} step={1}
+        onChange={(v) => onChange({ ...shadow, blur: v })} />
+      <div className="flex items-center gap-2 mt-1">
+        <label className="text-[10px] text-zinc-400 flex items-center gap-1">spread
+          <Num value={shadow.spread || 0} min={0}
+            onChange={(v) => onChange({ ...shadow, spread: v })} /></label>
+        <input type="color" value={hex}
+          onChange={(e) => onChange({ ...shadow, color: e.target.value, opacity: op })}
+          className="w-8 h-7 rounded cursor-pointer" title="Shadow color" />
+        <label className="text-[10px] text-zinc-400 flex items-center gap-1" title="Opacity">
+          α<Num value={Math.round(op * 100)} min={0} max={100} width="w-10"
+            onChange={(v) => onChange({ ...shadow, color: hex, opacity: v / 100 })} /></label>
+      </div>
+      <div className="grid grid-cols-2 gap-1 mt-1">
+        <label className="text-[10px] text-zinc-400">x<Num value={shadow.x} min={-100}
+          onChange={(v) => onChange({ ...shadow, x: v })} width="w-full" /></label>
+        <label className="text-[10px] text-zinc-400">y<Num value={shadow.y} min={-100}
+          onChange={(v) => onChange({ ...shadow, y: v })} width="w-full" /></label>
+      </div>
+    </>
+  );
 }
 
 // Thumbnail of one variant through the real pipeline. Transparent — parent supplies backdrop.
@@ -1150,9 +1178,7 @@ export default function App() {
                       borderColor: s.sel.imageId === img.id ? '#3b82f6' : undefined,
                       boxShadow: [
                         s.sel.imageId === img.id ? '0 0 0 3px rgba(59,130,246,.25)' : null,
-                        img.style?.shadow?.enabled
-                          ? `${img.style.shadow.x * ds}px ${img.style.shadow.y * ds}px ${img.style.shadow.blur * ds}px ${(img.style.shadow.spread || 0) * ds}px ${img.style.shadow.color}`
-                          : null,
+                        img.style?.shadow?.enabled ? cssBoxShadow(img.style.shadow, ds) : null,
                       ].filter(Boolean).join(', ') || undefined }}
                     onMouseDown={(e) => {
                       if (e.button !== 0) return;
@@ -1232,8 +1258,7 @@ export default function App() {
                               ? 'repeating-linear-gradient(45deg, rgba(59,130,246,.28) 0 8px, rgba(59,130,246,.06) 8px 16px)'
                               : 'rgba(59,130,246,0.07)',
                             filter: cssFilterString(shownVariant.adjust),
-                            boxShadow: shownVariant.shadow.enabled
-                              ? `${shownVariant.shadow.x * ds}px ${shownVariant.shadow.y * ds}px ${(shownVariant.shadow.blur * ds)}px ${shownVariant.shadow.color}` : 'none',
+                            boxShadow: shownVariant.shadow.enabled ? cssBoxShadow(shownVariant.shadow, ds) : 'none',
                           }} />
                           {shownVariant.feather > 0 && !shownVariant.mask?.enabled && (
                             <div className="absolute pointer-events-none border border-dashed border-blue-400/80 rounded-[2px]"
@@ -1616,24 +1641,8 @@ export default function App() {
                 <input type="checkbox" checked={selVariant.shadow.enabled}
                   onChange={(e) => s.updateVariant(selVariant.id, 'shadow', { ...selVariant.shadow, enabled: e.target.checked })} /> on</label>
               {selVariant.shadow.enabled && (
-                <>
-                  <Slider value={selVariant.shadow.blur} min={0} max={80} step={1}
-                    onChange={(v) => s.updateVariant(selVariant.id, 'shadow', { ...selVariant.shadow, blur: v })} />
-                  <div className="flex items-center gap-2 mt-1">
-                    <label className="text-[10px] text-zinc-400 flex items-center gap-1">spread
-                      <Num value={selVariant.shadow.spread || 0} min={0}
-                        onChange={(v) => s.updateVariant(selVariant.id, 'shadow', { ...selVariant.shadow, spread: v })} /></label>
-                    <input type="color" value={selVariant.shadow.color}
-                      onChange={(e) => s.updateVariant(selVariant.id, 'shadow', { ...selVariant.shadow, color: e.target.value })}
-                      className="w-8 h-7 rounded cursor-pointer" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-1 mt-1">
-                    <label className="text-[10px] text-zinc-400">x<Num value={selVariant.shadow.x} min={-100}
-                      onChange={(v) => s.updateVariant(selVariant.id, 'shadow', { ...selVariant.shadow, x: v })} width="w-full" /></label>
-                    <label className="text-[10px] text-zinc-400">y<Num value={selVariant.shadow.y} min={-100}
-                      onChange={(v) => s.updateVariant(selVariant.id, 'shadow', { ...selVariant.shadow, y: v })} width="w-full" /></label>
-                  </div>
-                </>
+                <ShadowControls shadow={selVariant.shadow}
+                  onChange={(next) => s.updateVariant(selVariant.id, 'shadow', next)} />
               )}
             </Row>
 
@@ -1752,24 +1761,8 @@ export default function App() {
                 <input type="checkbox" checked={imgSt.shadow.enabled}
                   onChange={(e) => s.updateImageStyle(selImg.id, 'shadow', { ...imgSt.shadow, enabled: e.target.checked })} /> on</label>
               {imgSt.shadow.enabled && (
-                <>
-                  <Slider value={imgSt.shadow.blur} min={0} max={80} step={1}
-                    onChange={(v) => s.updateImageStyle(selImg.id, 'shadow', { ...imgSt.shadow, blur: v })} />
-                  <div className="flex items-center gap-2 mt-1">
-                    <label className="text-[10px] text-zinc-400 flex items-center gap-1">spread
-                      <Num value={imgSt.shadow.spread || 0} min={0}
-                        onChange={(v) => s.updateImageStyle(selImg.id, 'shadow', { ...imgSt.shadow, spread: v })} /></label>
-                    <input type="color" value={imgSt.shadow.color}
-                      onChange={(e) => s.updateImageStyle(selImg.id, 'shadow', { ...imgSt.shadow, color: e.target.value })}
-                      className="w-8 h-7 rounded cursor-pointer" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-1 mt-1">
-                    <label className="text-[10px] text-zinc-400">x<Num value={imgSt.shadow.x} min={-100}
-                      onChange={(v) => s.updateImageStyle(selImg.id, 'shadow', { ...imgSt.shadow, x: v })} width="w-full" /></label>
-                    <label className="text-[10px] text-zinc-400">y<Num value={imgSt.shadow.y} min={-100}
-                      onChange={(v) => s.updateImageStyle(selImg.id, 'shadow', { ...imgSt.shadow, y: v })} width="w-full" /></label>
-                  </div>
-                </>
+                <ShadowControls shadow={imgSt.shadow}
+                  onChange={(next) => s.updateImageStyle(selImg.id, 'shadow', next)} />
               )}
             </Row>
             <Row label="Feather" onReset={() => s.updateImageStyle(selImg.id, 'feather', 0)} {...ivp('feather')}>
