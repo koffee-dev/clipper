@@ -1,0 +1,211 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>render-headless</title></head>
+<body><pre id="out">running…</pre>
+<script type="module">
+import { renderCut, renderSlicerCell, slicerCells, resolveMaskBase, guideCandidates, snapMoveRect, snapPoint } from '/src/render.js';
+
+const out = [];
+const t = (cond, name, extra = '') => out.push(`${cond ? 'ok  ' : 'FAIL'} ${name}${extra ? ' ' + extra : ''}`);
+const px = (ctx, x, y) => Array.from(ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data);
+const load = (url) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
+const V = (rect, over = {}) => ({
+  rect: { ...rect },
+  crop: { t: 0, r: 0, b: 0, l: 0 }, pad: { t: 0, r: 0, b: 0, l: 0 },
+  radius: 0, border: { w: 0, color: '#111827' },
+  shadow: { enabled: false, x: 0, y: 12, blur: 24, color: 'rgba(0,0,0,0.30)' },
+  adjust: { sat: 1, bright: 1, contrast: 1 },
+  transform: { dx: 0, dy: 0, scale: 1, rot: 0, flipH: false },
+  feather: 0, mask: { enabled: false, fill: null }, ...over,
+});
+const SRC = '/test/dashboard.png';
+
+try {
+  const img = await load(SRC);
+  t(img.naturalWidth === 1600 && img.naturalHeight === 1000, 'source 1600x1000', `${img.naturalWidth}x${img.naturalHeight}`);
+
+  // 1. plain cut dims (margin 8px each side, no shadow)
+  const chartRect = { x: 264, y: 288, w: 860, h: 400 };
+  let c = await renderCut({ imageUrl: SRC, box: { rect: chartRect }, design: V(chartRect), scale: 1 });
+  t(c.width === 876 && c.height === 416, 'plain cut dims', `${c.width}x${c.height}`);
+
+  // 2. border + pad math
+  c = await renderCut({ imageUrl: SRC, box: { rect: chartRect },
+    design: V(chartRect, { border: { w: 4, color: '#111' }, pad: { t: 10, r: 10, b: 10, l: 10 } }), scale: 1 });
+  t(c.width === 904 && c.height === 444, 'border+pad dims', `${c.width}x${c.height}`);
+
+  // 3. slicer grid on KPI row
+  const kpiRect = { x: 264, y: 96, w: 1312, h: 168 };
+  const kV = V(kpiRect);
+  const cells = slicerCells(kpiRect, kV.crop, { enabled: true, rows: 1, cols: 4, rowGap: 0, colGap: 24 });
+  t(cells.length === 4, 'slicer 4 cells');
+  t(Math.abs(cells[0].rect.w - 310) < 0.01 && cells[0].rect.x === 264, 'cell geometry', JSON.stringify(cells[0].rect));
+  t(Math.abs(cells[3].rect.x + cells[3].rect.w - 1576) < 0.01, 'last cell flush right');
+  const cc = await renderSlicerCell({ imageUrl: SRC, cellRect: cells[1].rect, variant: kV, scale: 1 });
+  t(cc.width === 310 + 16 && cc.height === 168 + 16, 'cell render dims', `${cc.width}x${cc.height}`);
+
+  // 4. nested mask: hole inside donut card, composited onto parent
+  const donutRect = { x: 1148, y: 288, w: 428, h: 400 };
+  const parentStyle = V(donutRect, { radius: 16, border: { w: 2, color: '#111827' } });
+  const holeRect = { x: 1310, y: 406, w: 104, h: 104 };
+  const holeV = V(holeRect, { radius: 8, mask: { enabled: true, fill: null }, feather: 0 });
+  const mb = { rect: { ...donutRect }, style: parentStyle };
+  c = await renderCut({ imageUrl: SRC, box: { rect: holeRect }, design: holeV, scale: 1, maskBase: mb });
+  t(c.width === 448 && c.height === 420, 'nested mask dims = parent cut', `${c.width}x${c.height}`);
+  const mctx = c.getContext('2d');
+  t(px(mctx, 224, 180)[3] === 0, 'hole center transparent');
+  t(px(mctx, 15, 15)[3] === 255, 'parent interior opaque');
+  const unmasked = await renderCut({ imageUrl: SRC, box: { rect: holeRect }, design: V(holeRect), scale: 1 });
+  const ud = unmasked.getContext('2d').getImageData(8, 8, 104, 104).data;
+  let anyT = false;
+  for (let i = 3; i < ud.length; i += 4) if (ud[i] === 0) { anyT = true; break; }
+  t(!anyT, 'unmasked cut has no holes');
+  // diagnostic bisect: same hole, varying one thing at a time
+  const bisect = async (label, design, mbArg) => {
+    const cc = await renderCut({ imageUrl: SRC, box: { rect: holeRect }, design, scale: 1, maskBase: mbArg });
+    const xx = cc.getContext('2d');
+    const dd2 = xx.getImageData(0, 0, cc.width, cc.height).data;
+    let n = 0;
+    for (let i = 3; i < dd2.length; i += 4) if (dd2[i] === 0) n++;
+    // hole center in canvas coords for this setup
+    t(true, `bisect-${label}`, `${cc.width}x${cc.height} transparent=${n}`);
+  };
+  await bisect('nested-r8', holeV, mb);
+  await bisect('nested-r0', V(holeRect, { mask: { enabled: true, fill: null }, feather: 0 }), mb);
+  await bisect('root-samehole', V(holeRect, { mask: { enabled: true, fill: null }, feather: 0 }), null);
+  await bisect('nested-noborder', V(holeRect, { radius: 8, mask: { enabled: true, fill: null }, feather: 0 }),
+    { rect: { ...donutRect }, style: V(donutRect, {}) });
+
+  // 5. root mask + image radius
+  const feedRect = { x: 1148, y: 712, w: 428, h: 264 };
+  const rootV = V(feedRect, { mask: { enabled: true, fill: null } });
+  c = await renderCut({ imageUrl: SRC, box: { rect: feedRect }, design: rootV, scale: 1, imageStyle: { radius: 32 } });
+  t(c.width === 1616 && c.height === 1016, 'root mask dims = image', `${c.width}x${c.height}`);
+  const rctx = c.getContext('2d');
+  t(px(rctx, 1370, 852)[3] === 0, 'root hole center transparent');
+  t(px(rctx, 10, 10)[3] === 0, 'image-radius corner transparent');
+  t(px(rctx, 308, 308)[3] === 255, 'image interior opaque');
+
+  // 6. auto-pad: full-size registered cut
+  const autoV = V(feedRect, { pad: { t: 0, r: 0, b: 0, l: 0, auto: true } });
+  c = await renderCut({ imageUrl: SRC, box: { rect: feedRect }, design: autoV, scale: 1 });
+  t(c.width === 1616 && c.height === 1016, 'auto-pad dims = image', `${c.width}x${c.height}`);
+  const actx = c.getContext('2d');
+  const aOut = px(actx, 8 + 1153, 8 + 717);
+  const srcC = document.createElement('canvas'); srcC.width = 1600; srcC.height = 1000;
+  srcC.getContext('2d').drawImage(img, 0, 0);
+  const aSrc = px(srcC.getContext('2d'), 1153, 717);
+  t(aOut[0] === aSrc[0] && aOut[1] === aSrc[1] && aOut[2] === aSrc[2] && aOut[3] === 255, 'auto-pad registration');
+  t(px(actx, 10, 10)[3] === 0, 'auto-pad outside is transparent');
+
+  // 7. plain-cut feather (no mask): inset falloff, visible without Use as Mask
+  const tableRect = { x: 264, y: 712, w: 860, h: 264 };
+  c = await renderCut({ imageUrl: SRC, box: { rect: tableRect }, design: V(tableRect, { feather: 12 }), scale: 1 });
+  const fctx = c.getContext('2d');
+  // content origin = 8px margin; left edge, mid-height of the 264px-tall cut
+  const edgeA = px(fctx, 8, 8 + 132)[3];
+  const innerA = px(fctx, 8 + 12, 8 + 132)[3];
+  const midA = px(fctx, 8 + 430, 8 + 132)[3];
+  t(edgeA < 80, 'plain feather edge near transparent', `edge=${edgeA}`);
+  t(innerA > 20 && innerA < 240, 'plain feather mid-falloff', `inner=${innerA}`);
+  t(midA === 255, 'plain feather core opaque', `mid=${midA}`);
+
+  // 8. resolveMaskBase
+  const fakeBoxes = [{ id: 'p', parentId: null }, { id: 'k', parentId: 'p', parentKind: 'box' }, { id: 'g', parentId: 'grp', parentKind: 'group' }];
+  const fakeVars = [{ id: 'v1', boxId: 'p', rect: { x: 1, y: 2, w: 3, h: 4 } }];
+  const rb = resolveMaskBase({ id: 'k', parentId: 'p', parentKind: 'box' }, fakeBoxes, fakeVars);
+  t(rb && rb.rect.x === 1 && rb.style.id === 'v1', 'mask base resolves to parent original');
+  t(resolveMaskBase({ id: 'p', parentId: null }, fakeBoxes, fakeVars) === null, 'root mask base is null');
+  t(resolveMaskBase({ id: 'g', parentId: 'grp', parentKind: 'group' }, fakeBoxes, fakeVars) === null, 'group child mask base is null');
+
+  // 9. color adjust actually applies
+  const logoRect = { x: 16, y: 22, w: 48, h: 48 };
+  const cn = await renderCut({ imageUrl: SRC, box: { rect: logoRect }, design: V(logoRect), scale: 1 });
+  const cg = await renderCut({ imageUrl: SRC, box: { rect: logoRect }, design: V(logoRect, { adjust: { sat: 0, bright: 1, contrast: 1 } }), scale: 1 });
+  const pn = px(cn.getContext('2d'), 8 + 24, 8 + 24), pg = px(cg.getContext('2d'), 8 + 24, 8 + 24);
+  t(Math.abs(pn[0] - pn[2]) > 30, 'source pixel is colorful', pn.slice(0, 3).join(','));
+  t(Math.abs(pg[0] - pg[1]) < 12 && Math.abs(pg[1] - pg[2]) < 12, 'sat-0 grays', pg.slice(0, 3).join(','));
+
+  // 10. snap guides
+  const gc = guideCandidates(1600, 1000, [{ x: 264, y: 96, w: 310, h: 168 }]);
+  t(gc.v.includes(0) && gc.v.includes(800) && gc.v.includes(1600) && gc.v.includes(264) && gc.v.includes(574), 'guide candidates');
+  const sm = snapMoveRect({ x: 260, y: 90, w: 310, h: 168 }, gc, 8);
+  t(sm.rect.x === 264 && sm.rect.y === 96 && sm.guides.length === 2, 'move snap to sibling', JSON.stringify(sm.rect));
+  const sn2 = snapMoveRect({ x: 100, y: 600, w: 50, h: 50 }, gc, 8);
+  t(sn2.rect.x === 100 && sn2.rect.y === 600 && sn2.guides.length === 0, 'no snap outside threshold');
+  const sp = snapPoint({ x: 1597, y: 501 }, gc, 8);
+  t(sp.x === 1600 && sp.y === 500 && sp.guides.length === 2, 'point snap to edge');
+
+  // 11. shadow spread inflates + stays inside canvas
+  const shBox = { x: 300, y: 300, w: 100, h: 100 };
+  c = await renderCut({ imageUrl: SRC, box: { rect: shBox },
+    design: V(shBox, { shadow: { enabled: true, x: 0, y: 0, blur: 10, spread: 6, color: '#000000' } }), scale: 1 });
+  t(c.width === 192 && c.height === 192, 'shadow spread dims', `${c.width}x${c.height}`);
+
+  // 12. feather + fill: opaque fill spread, no transparency fringe
+  const fillV = V(feedRect, { mask: { enabled: true, fill: '#ffffff' }, feather: 12 });
+  c = await renderCut({ imageUrl: SRC, box: { rect: feedRect }, design: fillV, scale: 1, imageStyle: {} });
+  const flCtx = c.getContext('2d');
+  const fc = px(flCtx, 1370, 852);
+  t(fc[0] === 255 && fc[1] === 255 && fc[2] === 255 && fc[3] === 255, 'fill hole center opaque white', fc.join(','));
+  t(px(flCtx, 1158, 852)[3] === 255, 'fill feather rim stays opaque');
+
+  // 12b. upscale entry points (preview + export share these)
+  const upMod = await import('/src/upscale.js');
+  const uc = await renderCut({ imageUrl: SRC, box: { rect: { x: 264, y: 96, w: 100, h: 60 } }, design: V({ x: 264, y: 96, w: 100, h: 60 }), scale: 1 });
+  const r1 = await upMod.upscaleCanvas(uc, 'canvas');
+  t(r1.canvas === uc && r1.via === 'canvas', 'upscale passthrough');
+  const r2 = await upMod.upscaleCanvas(uc, 'ui-text');
+  t(r2.canvas.width === uc.width * 2 && r2.via === 'ui-text-2x', 'ui-text 2x', `${r2.canvas.width}x${r2.canvas.height}`);
+  // ESRGAN without a model file must fall back with plain guidance —
+  // never onnxruntime's raw "error reading protobuf"
+  const hasX4 = await upMod.modelAvailable('realesrgan-x4');
+  const r3 = await upMod.upscaleCanvas(uc, 'realesrgan-x4');
+  if (!hasX4) {
+    t(r3.via === 'canvas-4x-fallback' && /realesrgan-x4v3/.test(r3.note || ''),
+      'missing ESRGAN model falls back with guidance', r3.via);
+  } else {
+    t(r3.canvas.width === uc.width * 4,
+      'ESRGAN x4 output is 4x', `${r3.via} ${r3.canvas.width}x${r3.canvas.height}`);
+  }
+  const rW = await upMod.upscaleCanvas(uc, 'waifu2x-x2');
+  t(rW.canvas.width === uc.width * 2, 'waifu2x 2x output size', `${rW.via} ${rW.canvas.width}`);
+
+  // 13. feathered transparent hole, no fill: opaque core + gradual falloff
+  const fhV = V(feedRect, { mask: { enabled: true, fill: null }, feather: 14 });
+  c = await renderCut({ imageUrl: SRC, box: { rect: feedRect }, design: fhV, scale: 1, imageStyle: {} });
+  const hctx = c.getContext('2d');
+  t(px(hctx, 1370, 852)[3] === 0, 'feathered hole core transparent');
+  const rimA = px(hctx, 1171, 852)[3];
+  t(rimA > 0 && rimA < 255, 'hole feather falloff is gradual', `alpha=${rimA}`);
+
+  // 14. shadow spread: no white plate, dilates colored shadow only
+  const spBox = { x: 300, y: 300, w: 100, h: 100 };
+  c = await renderCut({ imageUrl: SRC, box: { rect: spBox },
+    design: V(spBox, { shadow: { enabled: true, x: 0, y: 0, blur: 0, spread: 10, color: '#ff0000', opacity: 1 } }), scale: 1 });
+  const sctx = c.getContext('2d');
+  // canvas: content 100 + margin; margin = 0*2+10+0+0+20 = 30 each side → 160x160.
+  // content origin = (30,30). Spread ring sits 10px outside content: sample (30-5, 80).
+  const ring = px(sctx, 25, 80);
+  t(ring[0] > 200 && ring[1] < 80 && ring[2] < 80 && ring[3] === 255, 'spread ring is shadow color, opaque', ring.join(','));
+  // far margin corner must stay transparent (no white padding plate)
+  t(px(sctx, 2, 2)[3] === 0, 'spread margin corner transparent');
+
+  // 15. shadow opacity: alpha channel follows the slider, not the hex
+  c = await renderCut({ imageUrl: SRC, box: { rect: spBox },
+    design: V(spBox, { shadow: { enabled: true, x: 0, y: 0, blur: 0, spread: 10, color: '#ff0000', opacity: 0.5 } }), scale: 1 });
+  const octx = c.getContext('2d');
+  const oring = px(octx, 25, 80);
+  t(oring[0] > 150 && oring[3] > 80 && oring[3] < 180, 'shadow opacity lands in alpha', oring.join(','));
+
+  // 16. color helpers: rgba legacy parses, hex round-trips
+  const { parseCssColor, shadowRgba } = await import('/src/render.js');
+  const leg = parseCssColor('rgba(0,0,0,0.30)');
+  t(Math.abs(leg.a - 0.3) < 0.01, 'legacy rgba alpha parses', String(leg.a));
+  t(shadowRgba({ color: '#ff0000', opacity: 0.5 }) === 'rgba(255,0,0,0.5)', 'shadowRgba composes hex+opacity');
+} catch (e) {
+  out.push('ERROR ' + (e && e.stack || e));
+}
+document.getElementById('out').textContent = 'TESTS_JSON_BEGIN\n' + out.join('\n') + '\nTESTS_JSON_END';
+</script>
+</body>
+</html>
