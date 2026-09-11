@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1600px; height: 1000px; font-family: -apple-system, "Segoe UI", Inter, Roboto, sans-serif; background: #f1f5f9; color: #0f172a; overflow: hidden; }
+  .app { display: flex; width: 1600px; height: 1000px; }
+  .side { width: 240px; background: #0f172a; color: #cbd5e1; padding: 22px 16px; display: flex; flex-direction: column; }
+  .logo { display: flex; align-items: center; gap: 10px; padding: 0 8px 20px; }
+  .logo-mark { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+  .logo b { color: #fff; font-size: 17px; letter-spacing: .2px; }
+  .nav-sec { font-size: 10px; letter-spacing: 1.4px; color: #64748b; padding: 14px 10px 6px; }
+  .nav-item { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 9px; font-size: 13.5px; margin-bottom: 2px; }
+  .nav-item .dot { width: 17px; height: 17px; border-radius: 5px; background: #334155; flex-shrink: 0; }
+  .nav-item.active { background: #1e293b; color: #fff; }
+  .nav-item.active .dot { background: #6366f1; }
+  .nav-item .badge { margin-left: auto; background: #6366f1; color: #fff; font-size: 10.5px; font-weight: 700; border-radius: 20px; padding: 1px 8px; }
+  .side-user { margin-top: auto; display: flex; align-items: center; gap: 10px; background: #1e293b; border-radius: 12px; padding: 10px; }
+  .avatar { border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0; }
+  .main { flex: 1; padding: 0 24px 24px 24px; }
+  .topbar { height: 72px; display: flex; align-items: center; gap: 14px; }
+  .topbar h1 { font-size: 20px; font-weight: 700; }
+  .topbar .sub { font-size: 12px; color: #64748b; }
+  .search { margin-left: auto; width: 300px; background: #fff; border: 1px solid #e2e8f0; border-radius: 11px; padding: 9px 14px; font-size: 13px; color: #94a3b8; }
+  .icon-btn { width: 38px; height: 38px; border-radius: 11px; background: #fff; border: 1px solid #e2e8f0; position: relative; }
+  .icon-btn .ping { position: absolute; top: 8px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: #f43f5e; }
+  .who { display: flex; align-items: center; gap: 9px; }
+  .who small { display: block; color: #64748b; font-size: 11px; }
+  .who b { font-size: 13px; }
+  .kpis { display: flex; gap: 24px; margin: 4px 0 24px; }
+  .kpi { width: 310px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 16px 18px; }
+  .kpi .lbl { font-size: 12px; color: #64748b; font-weight: 600; }
+  .kpi .row { display: flex; align-items: baseline; gap: 9px; margin: 5px 0 8px; }
+  .kpi .num { font-size: 27px; font-weight: 800; letter-spacing: -.5px; }
+  .pill { font-size: 11px; font-weight: 700; border-radius: 20px; padding: 2px 9px; }
+  .up { background: #dcfce7; color: #15803d; } .down { background: #fee2e2; color: #b91c1c; }
+  .grid2 { display: flex; gap: 24px; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 18px 20px; }
+  .card h3 { font-size: 14.5px; font-weight: 700; }
+  .card .hint { font-size: 12px; color: #64748b; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: #64748b; }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+  .chart-card { width: 860px; }
+  .donut-card { width: 428px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; color: #94a3b8; font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #f1f5f9; }
+  td { padding: 9px 8px; border-bottom: 1px solid #f8fafc; }
+  .cell-user { display: flex; align-items: center; gap: 9px; }
+  .cell-user small { display: block; color: #94a3b8; font-size: 11px; }
+  .status { font-size: 11px; font-weight: 700; border-radius: 20px; padding: 3px 11px; }
+  .paid { background: #dcfce7; color: #15803d; } .pend { background: #fef9c3; color: #a16207; } .fail { background: #fee2e2; color: #b91c1c; }
+  .bar { width: 110px; height: 7px; border-radius: 5px; background: #f1f5f9; overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 5px; background: #6366f1; }
+  .feed-item { display: flex; gap: 11px; padding: 10px 0; border-bottom: 1px solid #f8fafc; font-size: 13px; }
+  .feed-item:last-child { border: 0; }
+  .feed-item small { display: block; color: #94a3b8; font-size: 11.5px; margin-top: 2px; }
+  .cta { display: inline-block; background: #0f172a; color: #fff; font-size: 13px; font-weight: 700; border-radius: 11px; padding: 11px 26px; margin-top: 14px; }
+  .cal { display: flex; gap: 8px; margin-top: 12px; }
+  .cal div { flex: 1; text-align: center; border: 1px solid #e2e8f0; border-radius: 10px; padding: 7px 0; font-size: 11px; color: #64748b; }
+  .cal div b { display: block; font-size: 14px; color: #0f172a; }
+  .cal div.today { background: #0f172a; color: #fff; border-color: #0f172a; }
+  .cal div.today b { color: #fff; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="side">
+    <div class="logo"><div class="logo-mark"></div><b>Pulseboard</b></div>
+    <div class="nav-sec">MENU</div>
+    <div class="nav-item active"><span class="dot"></span>Dashboard</div>
+    <div class="nav-item"><span class="dot"></span>Analytics</div>
+    <div class="nav-item"><span class="dot"></span>Customers<span class="badge">12</span></div>
+    <div class="nav-item"><span class="dot"></span>Orders</div>
+    <div class="nav-sec">WORKSPACE</div>
+    <div class="nav-item"><span class="dot"></span>Reports</div>
+    <div class="nav-item"><span class="dot"></span>Integrations</div>
+    <div class="nav-item"><span class="dot"></span>Settings</div>
+    <div class="nav-item"><span class="dot"></span>Help center</div>
+    <div class="side-user">
+      <div class="avatar" style="width:34px;height:34px;background:#6366f1;font-size:13px">AR</div>
+      <div><b style="font-size:13px">Ava Reyes</b><br><span style="font-size:11px;color:#94a3b8">admin@pulse.io</span></div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="topbar">
+      <div><h1>Overview</h1><div class="sub">Tuesday, Sep 10 · Live from all stores</div></div>
+      <div class="search">Search orders, customers…</div>
+      <div class="icon-btn"><span class="ping"></span></div>
+      <div class="icon-btn"></div>
+      <div class="who"><div class="avatar" style="width:38px;height:38px;background:#0ea5e9;font-size:14px">AR</div>
+        <div><b>Ava Reyes</b><small>Administrator</small></div></div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="lbl">TOTAL REVENUE</div><div class="row"><span class="num">$128,430</span><span class="pill up">+12.4%</span></div>
+        <svg width="270" height="44"><polyline points="0,36 34,30 68,32 102,22 136,24 170,14 204,16 238,6 270,8" fill="none" stroke="#6366f1" stroke-width="2.5"/></svg></div>
+      <div class="kpi"><div class="lbl">ACTIVE USERS</div><div class="row"><span class="num">24,891</span><span class="pill up">+8.1%</span></div>
+        <svg width="270" height="44"><polyline points="0,30 34,26 68,28 102,18 136,20 170,12 204,22 238,10 270,14" fill="none" stroke="#0ea5e9" stroke-width="2.5"/></svg></div>
+      <div class="kpi"><div class="lbl">CONVERSION</div><div class="row"><span class="num">3.42%</span><span class="pill down">−0.6%</span></div>
+        <svg width="270" height="44"><polyline points="0,14 34,18 68,16 102,24 136,22 170,30 204,28 238,34 270,32" fill="none" stroke="#f43f5e" stroke-width="2.5"/></svg></div>
+      <div class="kpi"><div class="lbl">AVG. ORDER</div><div class="row"><span class="num">$86.20</span><span class="pill up">+3.9%</span></div>
+        <svg width="270" height="44"><polyline points="0,28 34,24 68,20 102,22 136,16 170,18 204,10 238,12 270,6" fill="none" stroke="#10b981" stroke-width="2.5"/></svg></div>
+    </div>
+    <div class="grid2">
+      <div class="card chart-card">
+        <div class="card-head"><div><h3>Revenue vs target</h3><div class="hint">Last 8 weeks · all channels</div></div>
+          <div class="legend"><span><i style="background:#6366f1"></i>Revenue</span><span><i style="background:#cbd5e1"></i>Target</span></div></div>
+        <svg width="820" height="300">
+          <g stroke="#f1f5f9"><line x1="0" y1="40" x2="820" y2="40"/><line x1="0" y1="110" x2="820" y2="110"/><line x1="0" y1="180" x2="820" y2="180"/><line x1="0" y1="250" x2="820" y2="250"/></g>
+          <line x1="0" y1="120" x2="820" y2="120" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="7 6"/>
+          <path d="M0,230 L102,205 L205,215 L307,170 L410,180 L512,140 L615,150 L717,100 L820,70 L820,300 L0,300 Z" fill="#eef2ff"/>
+          <path d="M0,230 L102,205 L205,215 L307,170 L410,180 L512,140 L615,150 L717,100 L820,70" fill="none" stroke="#6366f1" stroke-width="3"/>
+          <circle cx="717" cy="100" r="6" fill="#6366f1" stroke="#fff" stroke-width="3"/>
+        </svg>
+      </div>
+      <div class="card donut-card">
+        <div class="card-head"><div><h3>Traffic mix</h3><div class="hint">Sessions by source</div></div></div>
+        <svg width="200" height="200" viewBox="0 0 200 200" style="display:block;margin:0 auto">
+          <circle cx="100" cy="100" r="72" fill="none" stroke="#e2e8f0" stroke-width="30"/>
+          <circle cx="100" cy="100" r="72" fill="none" stroke="#6366f1" stroke-width="30" stroke-dasharray="200 452" stroke-linecap="round" transform="rotate(-90 100 100)"/>
+          <circle cx="100" cy="100" r="72" fill="none" stroke="#0ea5e9" stroke-width="30" stroke-dasharray="120 452" stroke-dashoffset="-200" transform="rotate(-90 100 100)"/>
+          <circle cx="100" cy="100" r="72" fill="none" stroke="#f59e0b" stroke-width="30" stroke-dasharray="70 452" stroke-dashoffset="-320" transform="rotate(-90 100 100)"/>
+          <text x="100" y="96" text-anchor="middle" font-size="24" font-weight="800" fill="#0f172a">64%</text>
+          <text x="100" y="116" text-anchor="middle" font-size="11" fill="#64748b">organic</text>
+        </svg>
+        <div class="legend" style="justify-content:center;margin-top:12px"><span><i style="background:#6366f1"></i>Organic</span><span><i style="background:#0ea5e9"></i>Social</span><span><i style="background:#f59e0b"></i>Ads</span></div>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:24px">
+      <div class="card chart-card">
+        <div class="card-head"><div><h3>Recent orders</h3><div class="hint">5 latest transactions</div></div><div class="pill up">View all</div></div>
+        <table>
+          <tr><th>CUSTOMER</th><th>STATUS</th><th>PROGRESS</th><th>AMOUNT</th></tr>
+          <tr><td><div class="cell-user"><div class="avatar" style="width:30px;height:30px;background:#6366f1;font-size:11px">MK</div><div><b>Maya Khan</b><small>maya@loop.co</small></div></div></td><td><span class="status paid">Paid</span></td><td><div class="bar"><i style="width:100%"></i></div></td><td><b>$1,240</b></td></tr>
+          <tr><td><div class="cell-user"><div class="avatar" style="width:30px;height:30px;background:#0ea5e9;font-size:11px">JO</div><div><b>Jonas Ode</b><small>jon@frames.io</small></div></div></td><td><span class="status pend">Pending</span></td><td><div class="bar"><i style="width:60%;background:#f59e0b"></i></div></td><td><b>$860</b></td></tr>
+          <tr><td><div class="cell-user"><div class="avatar" style="width:30px;height:30px;background:#10b981;font-size:11px">LS</div><div><b>Lena Sørensen</b><small>lena@nord.dev</small></div></div></td><td><span class="status paid">Paid</span></td><td><div class="bar"><i style="width:100%"></i></div></td><td><b>$2,104</b></td></tr>
+          <tr><td><div class="cell-user"><div class="avatar" style="width:30px;height:30px;background:#f59e0b;font-size:11px">TP</div><div><b>Theo Park</b><small>theo@mono.shop</small></div></div></td><td><span class="status fail">Failed</span></td><td><div class="bar"><i style="width:20%;background:#f43f5e"></i></div></td><td><b>$312</b></td></tr>
+          <tr><td><div class="cell-user"><div class="avatar" style="width:30px;height:30px;background:#8b5cf6;font-size:11px">AN</div><div><b>Amara Ndiaye</b><small>amara@paystack.co</small></div></div></td><td><span class="status paid">Paid</span></td><td><div class="bar"><i style="width:100%"></i></div></td><td><b>$978</b></td></tr>
+        </table>
+      </div>
+      <div class="card donut-card">
+        <div class="card-head"><div><h3>Activity</h3><div class="hint">Team pulse</div></div></div>
+        <div class="feed-item"><div class="avatar" style="width:30px;height:30px;background:#6366f1;font-size:11px">MK</div><div><b>Maya</b> shipped v2.4<small>9 min ago</small></div></div>
+        <div class="feed-item"><div class="avatar" style="width:30px;height:30px;background:#f43f5e;font-size:11px">JO</div><div><b>Jonas</b> flagged 3 refunds<small>31 min ago</small></div></div>
+        <div class="feed-item"><div class="avatar" style="width:30px;height:30px;background:#10b981;font-size:11px">LS</div><div><b>Lena</b> closed Q3 report<small>1 hr ago</small></div></div>
+        <span class="cta">New campaign</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
